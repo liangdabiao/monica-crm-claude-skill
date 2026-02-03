@@ -271,6 +271,7 @@ class MonicaAPI:
             'first_name': first_name,
             'gender_id': gender_id,
             'is_birthdate_known': is_birthdate_known,
+            'is_deceased_date_known': False,
             'is_partial': is_partial,
             'is_deceased': is_deceased,
         }
@@ -616,7 +617,15 @@ class MonicaAPI:
 
     def get_reminder(self, reminder_id: int) -> Dict:
         """Get a specific reminder."""
-        return self._request('GET', f'/reminders/{reminder_id}')
+        result = self._request('GET', f'/reminders/{reminder_id}')
+        # Handle response format
+        if isinstance(result, dict):
+            data_obj = result.get('data', result)
+            if isinstance(data_obj, dict):
+                return data_obj
+            elif isinstance(data_obj, list) and len(data_obj) > 0:
+                return data_obj[0]
+        return result
 
     def create_reminder(self, title: str, date: str, contact_id: Optional[int] = None, **kwargs) -> Dict:
         """
@@ -733,6 +742,40 @@ class MonicaAPI:
             Deletion response
         """
         return self._request('DELETE', f'/tags/{tag_id}')
+
+    def set_contact_tags(self, contact_id: int, tags: List[str]) -> Dict:
+        """
+        Set tags for a contact (replaces all existing tags).
+
+        Args:
+            contact_id: Contact ID
+            tags: List of tag names to set
+
+        Returns:
+            Updated contact data
+        """
+        import requests
+        url = f"{self.api_url}/api/contacts/{contact_id}/setTags"
+        data = {'tags': tags}
+        headers = {
+            'Authorization': f'Bearer {self.api_token}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+
+        try:
+            if HAS_REQUESTS:
+                response = requests.post(url, json=data, headers=headers, timeout=60)
+                response.raise_for_status()
+                return response.json()
+            else:
+                import urllib.request
+                body = json.dumps(data).encode('utf-8')
+                req = urllib.request.Request(url, data=body, headers=headers, method='POST')
+                with urllib.request.urlopen(req, timeout=60) as response:
+                    return json.loads(response.read().decode('utf-8'))
+        except Exception as e:
+            raise MonicaAPIError(f"Failed to set tags: {e}") from e
 
     # ========== CONVERSATIONS ==========
 
@@ -969,6 +1012,10 @@ Examples:
     tag_delete_parser = tags_subparsers.add_parser('delete', help='Delete a tag')
     tag_delete_parser.add_argument('tag_id', type=int, help='Tag ID')
 
+    tag_set_parser = tags_subparsers.add_parser('set', help='Set tags for a contact')
+    tag_set_parser.add_argument('contact_id', type=int, help='Contact ID')
+    tag_set_parser.add_argument('tags', nargs='+', help='Tag names to set (space-separated)')
+
     args = parser.parse_args()
 
     if not args.command:
@@ -1049,10 +1096,16 @@ Examples:
             else:
                 print(f"✓ Found: {contact['complete_name']} (ID: {contact['id']})")
 
+            # Add phone if provided (as note for now, until we get field type IDs)
             if args.phone:
-                api.set_contact_field(contact['id'], 'phone', args.phone, is_favorite=True)
-                print(f"  ✓ Phone: {args.phone}")
+                phone_note = f"电话: {args.phone}"
+                if args.note:
+                    phone_note = args.note + "\n" + phone_note
+                    args.note = phone_note  # Update note to include phone
+                else:
+                    args.note = phone_note
 
+            # Add note if provided
             if args.note:
                 api.create_note(body=args.note, contact_id=contact['id'])
                 print(f"  ✓ Note: {args.note}")
@@ -1116,6 +1169,10 @@ Examples:
             elif args.tags_command == 'delete':
                 result = api.delete_tag(tag_id=args.tag_id)
                 print(f"✓ Tag {args.tag_id} deleted")
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            elif args.tags_command == 'set':
+                result = api.set_contact_tags(contact_id=args.contact_id, tags=args.tags)
+                print(f"✓ Set tags for contact {args.contact_id}: {', '.join(args.tags)}")
                 print(json.dumps(result, indent=2, ensure_ascii=False))
             else:
                 tags_parser.print_help()

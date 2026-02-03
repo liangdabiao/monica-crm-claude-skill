@@ -62,6 +62,11 @@ python scripts/monica_api.py add-contact "John Doe" --phone "1234567890" --email
 python scripts/monica_api.py find-or-create "Jane Smith" --phone "9876543210" --note "New lead"
 ```
 
+**Set tags for contact**
+```bash
+python scripts/monica_api.py tags set 123 "VIP" "吃饭人"
+```
+
 ### Notes
 
 **Add note to contact**
@@ -93,30 +98,26 @@ api.create_activity(
 
 ### Tags
 
-**Add tag to contact** (via Python import)
+**List tags**
+```bash
+python scripts/monica_api.py tags list
+```
+
+**Create a tag**
+```bash
+python scripts/monica_api.py tags create "VIP"
+```
+
+**Set tags for contact**
+```bash
+python scripts/monica_api.py tags set 123 "VIP" "吃饭人"
+```
+
+**Set tags via Python API**
 ```python
 from scripts.monica_api import MonicaAPI
-import urllib.request
-import json
-
 api = MonicaAPI()
-token = api.api_token
-contact_id = 123
-
-# POST /contacts/:id/setTags
-url = f'https://app.monicahq.com/api/contacts/{contact_id}/setTags'
-data = {'tags': ['欠款人', 'VIP']}
-body = json.dumps(data).encode('utf-8')
-
-headers = {
-    'Authorization': f'Bearer {token}',
-    'Content-Type': 'application/json',
-}
-
-req = urllib.request.Request(url, data=body, headers=headers, method='POST')
-with urllib.request.urlopen(req) as response:
-    result = json.loads(response.read().decode('utf-8'))
-    # Tag added successfully
+api.set_contact_tags(contact_id=123, tags=['VIP', '吃饭人'])
 ```
 
 ## Python API
@@ -153,6 +154,21 @@ activity = api.create_activity(
     happened_at="2025-01-15",
     contacts=[123]
 )
+
+# Reminders
+reminder = api.create_reminder(
+    title="Follow up",
+    date="2025-01-20",
+    contact_id=123
+)
+reminders = api.list_reminders(limit=10)
+specific_reminder = api.get_reminder(reminder_id=456)
+api.delete_reminder(reminder_id=456)
+
+# Tags
+api.set_contact_tags(contact_id=123, tags=['VIP', '吃饭人'])
+tag = api.create_tag(name='New Tag')
+tags = api.list_tags()
 ```
 
 ## Common Workflows
@@ -177,6 +193,16 @@ python scripts/monica_api.py add-contact "Client Name" \
 ```bash
 # Search for contacts
 python scripts/monica_api.py contacts --query "Smith"
+```
+
+### Adding tags to a contact
+
+```bash
+# Find the contact first to get the ID
+python scripts/monica_api.py find "John Doe"
+
+# Set tags for the contact
+python scripts/monica_api.py tags set 123 "VIP" "吃饭人"
 ```
 
 ## Gender IDs
